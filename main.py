@@ -28,19 +28,19 @@ OUTPUT_AUDIO_FILE_BASE = "stock_info_output" # שם בסיס לקובץ WAV שי
 OUTPUT_INI_FILE_NAME = "ext.ini" # שם קובץ ה-INI שיועלה לימות המשיח
 
 # --- נתיב להרצת ffmpeg ---
-FFMPEG_EXECUTABLE = "ffmpeg" 
+FFMPEG_EXECUTABLE = "ffmpeg"  
 
 def ensure_ffmpeg():
+    """מוודא ש-FFmpeg מותקן ונגיש."""
     global FFMPEG_EXECUTABLE
     if not shutil.which("ffmpeg"): # בודק אם ffmpeg כבר ב-PATH של המערכת
         print("⬇️ מתקין ffmpeg...")
         ffmpeg_bin_dir = "ffmpeg_bin"
         os.makedirs(ffmpeg_bin_dir, exist_ok=True)
         
-        # --- השינוי המרכזי כאן: הורדת גרסת לינוקס סטטית (tar.xz) ---
+        # הורדת גרסת לינוקס סטטית (tar.xz)
         ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
         archive_path = os.path.join(ffmpeg_bin_dir, "ffmpeg.tar.xz")
-        # --- סוף השינוי המרכזי ---
 
         try:
             r = requests.get(ffmpeg_url, stream=True)
@@ -50,7 +50,7 @@ def ensure_ffmpeg():
                     f.write(chunk)
             print("✅ הורדת ffmpeg הושלמה.")
             
-            # --- חילוץ קובץ tar.xz ---
+            # חילוץ קובץ tar.xz
             with tarfile.open(archive_path, 'r:xz') as tar_ref:
                 tar_ref.extractall(ffmpeg_bin_dir)
             os.remove(archive_path) # מוחק את קובץ הארכיון המקורי
@@ -59,7 +59,7 @@ def ensure_ffmpeg():
             found_ffmpeg_path = None
             for root, _, files in os.walk(ffmpeg_bin_dir):
                 # קובצי ffmpeg בלינוקס לרוב לא יכילו סיומת .exe
-                if "ffmpeg" in files: 
+                if "ffmpeg" in files:  
                     found_ffmpeg_path = os.path.join(root, "ffmpeg")
                     break
             
@@ -68,7 +68,7 @@ def ensure_ffmpeg():
                 # הוסף את התיקייה המכילה את קובץ ה-ffmpeg ל-PATH
                 os.environ["PATH"] += os.pathsep + os.path.dirname(FFMPEG_EXECUTABLE)
                 # ב-Linux, ודא שקובץ ה-ffmpeg הוא בר הרצה
-                if os.name == 'posix': 
+                if os.name == 'posix':  
                     os.chmod(FFMPEG_EXECUTABLE, 0o755) # הגדרת הרשאות הרצה
                 print(f"✅ ffmpeg הותקן והוסף ל-PATH מנתיב: {FFMPEG_EXECUTABLE}")
             else:
@@ -198,7 +198,7 @@ def get_stock_price_data(ticker):
     """מביא נתוני מחיר ושינוי יומי עבור מניה."""
     try:
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="7d") 
+        hist = stock.history(period="7d")  
         
         if hist.empty or len(hist) < 2:
             print(f"⚠️ אין מספיק נתוני היסטוריה עבור {ticker}.")
@@ -220,7 +220,10 @@ def create_ext_ini_file(action_type, value):
         with open(OUTPUT_INI_FILE_NAME, 'w', encoding='windows-1255') as f:
             if action_type == "go_to_folder":
                 f.write(f"type=go_to_folder\n")
-                f.write(f"go_to_folder={value}\n")
+                # **השינוי כאן:** הסרת "ivr2:" והסרת תו הלוכסן האחרון אם קיים.
+                # .rstrip('/') מסיר רק את הלוכסן האחרון אם הוא קיים, מבלי לפגוע בלוכסנים פנימיים.
+                relative_path = value.replace("ivr2:", "").rstrip('/')
+                f.write(f"go_to_folder={relative_path}\n")
             elif action_type == "play_file":
                 f.write(f"type=playfile\n")
                 f.write(f"file_name={value}\n")
@@ -342,7 +345,7 @@ async def main_loop():
             # --- שלב 2: יצירת תגובה קולית והעלאה ---
             generated_audio_success = False
             uploaded_ext_ini = False
-            output_yemot_wav_name = None 
+            output_yemot_wav_name = None  
 
             if response_text and action_type == "play_file":
                 if await create_audio_file_from_text(response_text, TEMP_MP3_FILE):
@@ -361,7 +364,7 @@ async def main_loop():
                 else:
                     print("❌ נכשלה יצירת קובץ אודיו מטקסט.")
             elif action_type == "go_to_folder":
-                generated_audio_success = True 
+                generated_audio_success = True  
 
             if generated_audio_success or action_type == "go_to_folder":
                 if create_ext_ini_file(action_type, action_value):
@@ -376,7 +379,7 @@ async def main_loop():
                 print("⚠️ לא נוצרה תגובה קולית או הפניה לשלוחה.")
 
             # --- שלב 3: ניקוי קבצים ומחיקת קובץ המקור בימות המשיח ---
-            if uploaded_ext_ini: 
+            if uploaded_ext_ini:  
                 delete_yemot_file(yemot_filename)
             else:
                 print(f"⚠️ לא נמחק הקובץ {yemot_filename} מימות המשיח מכיוון שלא נוצרה תגובה/הפניה בהצלחה.")
