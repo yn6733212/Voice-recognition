@@ -1,0 +1,10 @@
+requests
+asyncio
+edge-tts
+pandas
+yfinance
+speechrecognition
+requests-toolbelt
+pyaudio
+numpy
+setuptools
