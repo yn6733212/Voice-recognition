@@ -24,7 +24,7 @@ UPLOAD_FOLDER_FOR_OUTPUT = "11" # השלוחה אליה מעלים את התשו
 CSV_FILE_PATH = "stock_data.csv"
 TEMP_MP3_FILE = "temp_output.mp3" # קובץ זמני ל-MP3 לפני המרה ל-WAV
 TEMP_INPUT_WAV = "temp_input.wav" # קובץ זמני לקלט WAV מימות המשיח
-OUTPUT_AUDIO_FILE_BASE = "stock_info_output" # שם בסיס לקובץ WAV שיועלה לימות המשיח
+OUTPUT_AUDIO_FILE_BASE = "000" # **שינוי כאן: שם בסיס לקובץ WAV שיועלה לימות המשיח יהיה 000**
 OUTPUT_INI_FILE_NAME = "ext.ini" # שם קובץ ה-INI שיועלה לימות המשיח
 
 # --- נתיב להרצת ffmpeg ---
@@ -220,13 +220,13 @@ def create_ext_ini_file(action_type, value):
         with open(OUTPUT_INI_FILE_NAME, 'w', encoding='windows-1255') as f:
             if action_type == "go_to_folder":
                 f.write(f"type=go_to_folder\n")
-                # **השינוי כאן:** הסרת "ivr2:" והסרת תו הלוכסן האחרון אם קיים.
-                # .rstrip('/') מסיר רק את הלוכסן האחרון אם הוא קיים, מבלי לפגוע בלוכסנים פנימיים.
+                # הסרת "ivr2:" והסרת תו הלוכסן האחרון אם קיים
                 relative_path = value.replace("ivr2:", "").rstrip('/')
                 f.write(f"go_to_folder={relative_path}\n")
             elif action_type == "play_file":
                 f.write(f"type=playfile\n")
-                f.write(f"file_name={value}\n")
+                # **שינוי כאן: לא כותבים את שדה file_name**
+                # המערכת תניח שהקובץ הוא 000.wav אם רק type=playfile קיים
         return True
     except Exception as e:
         print(f"❌ שגיאה ביצירת קובץ INI: {e}")
@@ -264,13 +264,11 @@ def convert_mp3_to_wav(mp3_file, wav_file):
         return True
     except subprocess.CalledProcessError as e:
         print(f"❌ שגיאה בהמרה (FFmpeg): {e}. ודא ש-FFmpeg מותקן ונגיש.")
-        return False
     except FileNotFoundError:
         print(f"❌ שגיאה בהמרה (FFmpeg): ffmpeg לא נמצא. ודא שהוא מותקן ב-PATH.")
-        return False
     except Exception as e:
         print(f"❌ שגיאה כללית בהמרה: {e}")
-        return False
+    return False
 
 async def create_audio_file_from_text(text, filename):
     """יוצר קובץ אודיו (MP3 זמני) מטקסט באמצעות Edge TTS."""
@@ -310,7 +308,7 @@ async def main_loop():
             
             response_text = ""
             action_type = "play_file"
-            action_value = ""
+            action_value = "" # ישמש לשם הקובץ 000.wav או לנתיב השלוחה
 
             if recognized_text:
                 best_match_key = get_best_match(recognized_text, stock_data)
@@ -335,24 +333,31 @@ async def main_loop():
                         else:
                             response_text = f"מצטערים, לא הצלחנו למצוא נתונים עבור מניית {stock_info['display_name']}."
                             print(f"❌ לא נמצאו נתונים עבור מניית {stock_info['display_name']}.")
+                        
+                        # **שינוי כאן: קובץ הפלט יהיה תמיד 000.wav**
+                        action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
+
                 else:
                     response_text = "לא הצלחנו לזהות את נייר הערך שביקשת. אנא נסה שנית."
                     print(f"❌ לא זוהה נייר ערך תואם ברשימה עבור: '{recognized_text}'")
+                    # אם לא זוהה דיבור, עדיין נכין קובץ תשובה ב-000.wav
+                    action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
             else:
                 response_text = "לא זוהה דיבור ברור בהקלטה. אנא נסה לדבר באופן ברור יותר."
                 print("❌ לא זוהה דיבור ברור בהקלטה.")
+                # אם לא זוהה דיבור, עדיין נכין קובץ תשובה ב-000.wav
+                action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
+
 
             # --- שלב 2: יצירת תגובה קולית והעלאה ---
             generated_audio_success = False
             uploaded_ext_ini = False
-            output_yemot_wav_name = None  
+            output_yemot_wav_name = None  # יישמר 000.wav אם צריך
 
             if response_text and action_type == "play_file":
+                output_yemot_wav_name = f"{OUTPUT_AUDIO_FILE_BASE}.wav" # **שינוי כאן: שם קובץ הפלט הוא תמיד 000.wav**
+                
                 if await create_audio_file_from_text(response_text, TEMP_MP3_FILE):
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                    output_yemot_wav_name = f"{OUTPUT_AUDIO_FILE_BASE}_{timestamp}.wav"
-                    action_value = output_yemot_wav_name
-                    
                     if convert_mp3_to_wav(TEMP_MP3_FILE, output_yemot_wav_name):
                         if upload_file_to_yemot(output_yemot_wav_name, output_yemot_wav_name):
                             generated_audio_success = True
@@ -364,9 +369,10 @@ async def main_loop():
                 else:
                     print("❌ נכשלה יצירת קובץ אודיו מטקסט.")
             elif action_type == "go_to_folder":
-                generated_audio_success = True  
+                generated_audio_success = True # עבור הפניה לשלוחה, אין קובץ שמע חדש שצריך ליצור
 
             if generated_audio_success or action_type == "go_to_folder":
+                # action_value כבר מכיל את הנתיב לשלוחה או את "000.wav" (אבל לא נשתמש בו עבור play_file ב-INI)
                 if create_ext_ini_file(action_type, action_value):
                     if upload_file_to_yemot(OUTPUT_INI_FILE_NAME, OUTPUT_INI_FILE_NAME):
                         uploaded_ext_ini = True
@@ -385,7 +391,8 @@ async def main_loop():
                 print(f"⚠️ לא נמחק הקובץ {yemot_filename} מימות המשיח מכיוון שלא נוצרה תגובה/הפניה בהצלחה.")
 
             local_files_to_clean = [TEMP_INPUT_WAV, TEMP_MP3_FILE, OUTPUT_INI_FILE_NAME]
-            if output_yemot_wav_name and os.path.exists(output_yemot_wav_name):
+            # מוחקים את 000.wav המקומי רק אם נוצר
+            if output_yemot_wav_name and os.path.exists(output_yemot_wav_name) and action_type == "play_file":
                 local_files_to_clean.append(output_yemot_wav_name)
 
             for f in local_files_to_clean:
