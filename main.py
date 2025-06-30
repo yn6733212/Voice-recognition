@@ -134,6 +134,13 @@ def normalize_text(text):
     """
     מנרמל טקסט עבור התאמה (מסיר תווים מיוחדים וממיר לאותיות קטנות).
     """
+    # ודא שהקלט הוא מחרוזת. אם הוא לא (לדוגמה, float NaN), המר אותו למחרוזת ריקה.
+    if not isinstance(text, str):
+        if pd.isna(text): # אם זה NaN (שמופיע כ-float), התייחס אליו כריק
+            text = ""
+        else: # אם זה סוג אחר של לא-מחרוזת, המר למחרוזת
+            text = str(text) 
+    
     return re.sub(r'[^א-תa-zA-Z0-9 ]', '', text).lower().strip()
 
 def load_stock_data(path):
@@ -147,7 +154,8 @@ def load_stock_data(path):
     for _, row in df.iterrows():
         # ודא שהערכים הבוליאניים מומרים כראוי
         has_dedicated_folder = str(row["has_dedicated_folder"]).lower() == 'true'
-        stock_data[normalize_text(str(row["name"]))] = {
+        # הערה: הסרתי את str() כאן מכיוון ש-normalize_text מטפלת בזה עכשיו
+        stock_data[normalize_text(row["name"])] = { 
             "symbol": row["symbol"],
             "display_name": row["display_name"],
             "type": row["type"],
