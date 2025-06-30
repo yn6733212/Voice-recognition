@@ -147,7 +147,7 @@ def load_stock_data(path):
     for _, row in df.iterrows():
         # ודא שהערכים הבוליאניים מומרים כראוי
         has_dedicated_folder = str(row["has_dedicated_folder"]).lower() == 'true'
-        stock_data[normalize_text(row["name"])] = {
+        stock_data[normalize_text(str(row["name"]))] = {
             "symbol": row["symbol"],
             "display_name": row["display_name"],
             "type": row["type"],
