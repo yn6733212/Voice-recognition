@@ -10,7 +10,8 @@ from difflib import get_close_matches
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 import re
 import shutil
-import datetime # לייבוא מודול datetime
+import datetime
+import tarfile # לייבוא tarfile עבור קבצי .tar.xz
 
 # --- הגדרות מערכת ימות המשיח ---
 USERNAME = "0733181201"
@@ -26,8 +27,7 @@ TEMP_INPUT_WAV = "temp_input.wav" # קובץ זמני לקלט WAV מימות ה
 OUTPUT_AUDIO_FILE_BASE = "stock_info_output" # שם בסיס לקובץ WAV שיועלה לימות המשיח
 OUTPUT_INI_FILE_NAME = "ext.ini" # שם קובץ ה-INI שיועלה לימות המשיח
 
-# --- נתיב להרצת ffmpeg - לא משתנה על פי בקשתך ---
-# הקוד ינסה למצוא את ffmpeg או להוריד אותו לתוך תיקיית ffmpeg_bin
+# --- נתיב להרצת ffmpeg ---
 FFMPEG_EXECUTABLE = "ffmpeg" 
 
 def ensure_ffmpeg():
@@ -36,40 +36,40 @@ def ensure_ffmpeg():
         print("⬇️ מתקין ffmpeg...")
         ffmpeg_bin_dir = "ffmpeg_bin"
         os.makedirs(ffmpeg_bin_dir, exist_ok=True)
-        zip_path = "ffmpeg.zip"
+        
+        # --- השינוי המרכזי כאן: הורדת גרסת לינוקס סטטית (tar.xz) ---
+        ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+        archive_path = os.path.join(ffmpeg_bin_dir, "ffmpeg.tar.xz")
+        # --- סוף השינוי המרכזי ---
+
         try:
-            # הורדת הגרסה essentials, שהיא קטנה יותר
-            r = requests.get("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", stream=True)
+            r = requests.get(ffmpeg_url, stream=True)
             r.raise_for_status()
-            with open(zip_path, 'wb') as f:
+            with open(archive_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
             print("✅ הורדת ffmpeg הושלמה.")
             
-            import zipfile
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                # חלץ הכל לתיקיית ffmpeg_bin
-                zip_ref.extractall(ffmpeg_bin_dir)
-            os.remove(zip_path) # מוחק את קובץ הזיפ המקורי
+            # --- חילוץ קובץ tar.xz ---
+            with tarfile.open(archive_path, 'r:xz') as tar_ref:
+                tar_ref.extractall(ffmpeg_bin_dir)
+            os.remove(archive_path) # מוחק את קובץ הארכיון המקורי
 
             # מוצא את קובץ ההפעלה ffmpeg בתוך התיקייה שחולצה
             found_ffmpeg_path = None
             for root, _, files in os.walk(ffmpeg_bin_dir):
-                if "ffmpeg" in files: # עבור לינוקס
+                # קובצי ffmpeg בלינוקס לרוב לא יכילו סיומת .exe
+                if "ffmpeg" in files: 
                     found_ffmpeg_path = os.path.join(root, "ffmpeg")
-                    break
-                elif "ffmpeg.exe" in files: # עבור ווינדוס
-                    found_ffmpeg_path = os.path.join(root, "ffmpeg.exe")
                     break
             
             if found_ffmpeg_path:
                 FFMPEG_EXECUTABLE = found_ffmpeg_path
                 # הוסף את התיקייה המכילה את קובץ ה-ffmpeg ל-PATH
-                # (רק לתהליך הנוכחי, זה עשוי לא להספיק בסביבות מסוימות)
                 os.environ["PATH"] += os.pathsep + os.path.dirname(FFMPEG_EXECUTABLE)
-                # ב-Linux, וודא שקובץ ה-ffmpeg הוא בר הרצה
+                # ב-Linux, ודא שקובץ ה-ffmpeg הוא בר הרצה
                 if os.name == 'posix': 
-                    os.chmod(FFMPEG_EXECUTABLE, 0o755)
+                    os.chmod(FFMPEG_EXECUTABLE, 0o755) # הגדרת הרשאות הרצה
                 print(f"✅ ffmpeg הותקן והוסף ל-PATH מנתיב: {FFMPEG_EXECUTABLE}")
             else:
                 print("❌ שגיאה: לא נמצא קובץ הפעלה של ffmpeg לאחר החילוץ.")
@@ -90,16 +90,14 @@ def download_yemot_file():
         response.raise_for_status()
         files = response.json().get("files", [])
         
-        # מסנן קבצי WAV תקינים שלא מתחילים ב-M (קבצי מערכת/הודעות)
         valid_files = [
             (int(f["name"].replace(".wav", "")), f["name"])
             for f in files if f.get("exists") and f["name"].endswith(".wav") and not f["name"].startswith("M")
         ]
         
         if not valid_files:
-            return None, None # אין קבצים חדשים
+            return None, None
         
-        # מוצא את הקובץ עם המספר הגבוה ביותר (החדש ביותר)
         _, name = max(valid_files)
         
         dl_url = "https://www.call2all.co.il/ym/api/DownloadFile"
@@ -110,7 +108,7 @@ def download_yemot_file():
         with open(TEMP_INPUT_WAV, "wb") as f:
             f.write(r.content)
         print(f"📥 הקלטה חדשה הורדה: {name}")
-        return TEMP_INPUT_WAV, name # מחזיר את נתיב הקובץ המקומי ואת שם הקובץ בימות המשיח
+        return TEMP_INPUT_WAV, name
     except requests.exceptions.RequestException as e:
         print(f"❌ שגיאה בהורדת קובץ מימות המשיח: {e}")
         return None, None
@@ -165,15 +163,14 @@ def load_stock_data(path):
         df = pd.read_csv(path)
         stock_data = {}
         for _, row in df.iterrows():
-            # ודא ששמות העמודות ב-CSV תואמים
             name = row.get("name")
             symbol = row.get("symbol")
-            display_name = row.get("display_name", name) # שימוש ב-name כברירת מחדל
+            display_name = row.get("display_name", name)
             type_ = row.get("type")
             has_dedicated_folder = str(row.get("has_dedicated_folder", "false")).lower() == 'true'
             target_path = row.get("target_path", "")
             
-            if name and symbol and type_: # ודא שנתונים בסיסיים קיימים
+            if name and symbol and type_:
                 stock_data[normalize_text(name)] = {
                     "symbol": symbol,
                     "display_name": display_name,
@@ -192,17 +189,15 @@ def load_stock_data(path):
 
 def get_best_match(query, stock_dict):
     """מוצא את ההתאמה הטובה ביותר לשאילתה מתוך רשימת המניות."""
-    # נסה קודם למצוא התאמה ב-cutoff גבוה, אם לא, נסה נמוך יותר
     matches = get_close_matches(normalize_text(query), stock_dict.keys(), n=1, cutoff=0.7)
     if not matches:
-        matches = get_close_matches(normalize_text(query), stock_dict.keys(), n=1, cutoff=0.5) # סף התאמה פחות מחמיר
+        matches = get_close_matches(normalize_text(query), stock_dict.keys(), n=1, cutoff=0.5)
     return matches[0] if matches else None
 
 def get_stock_price_data(ticker):
     """מביא נתוני מחיר ושינוי יומי עבור מניה."""
     try:
         stock = yf.Ticker(ticker)
-        # תקופה של 7 ימים כדי להבטיח שיש לפחות 2 ימי מסחר
         hist = stock.history(period="7d") 
         
         if hist.empty or len(hist) < 2:
@@ -236,7 +231,6 @@ def create_ext_ini_file(action_type, value):
 
 def upload_file_to_yemot(file_path, yemot_file_name_or_path_on_yemot):
     """מעלה קובץ (אודיו או INI) לימות המשיח."""
-    # yemot_file_name_or_path_on_yemot יהיה לדוגמה "000.wav" או "ext.ini" או "ans_netflix_123456.wav"
     full_upload_path = f"ivr2:/{UPLOAD_FOLDER_FOR_OUTPUT}/{yemot_file_name_or_path_on_yemot}"
     
     m = MultipartEncoder(fields={
@@ -246,7 +240,7 @@ def upload_file_to_yemot(file_path, yemot_file_name_or_path_on_yemot):
     })
     try:
         r = requests.post("https://www.call2all.co.il/ym/api/UploadFile", data=m, headers={'Content-Type': m.content_type})
-        r.raise_for_status() # יזרוק שגיאה עבור קוד סטטוס 4xx/5xx
+        r.raise_for_status()
         print(f"⬆️ הקובץ '{os.path.basename(file_path)}' הועלה בהצלחה לנתיב: {full_upload_path}")
         return True
     except requests.exceptions.RequestException as e:
@@ -259,10 +253,9 @@ def upload_file_to_yemot(file_path, yemot_file_name_or_path_on_yemot):
 def convert_mp3_to_wav(mp3_file, wav_file):
     """ממיר קובץ MP3 ל-WAV באמצעות FFmpeg."""
     try:
-        # שימוש ב-FFMPEG_EXECUTABLE שהוגדר, עם loglevel error להפחתת פלט מיותר
         result = subprocess.run(
             [FFMPEG_EXECUTABLE, "-loglevel", "error", "-y", "-i", mp3_file, "-ar", "8000", "-ac", "1", "-acodec", "pcm_s16le", wav_file],
-            check=True # יזרוק CalledProcessError אם הפקודה נכשלה
+            check=True
         )
         print(f"✅ קובץ שמע נוצר בהצלחה: {wav_file}")
         return True
@@ -292,30 +285,29 @@ async def main_loop():
     stock_data = load_stock_data(CSV_FILE_PATH)
     if not stock_data:
         print("❌ לא ניתן להמשיך ללא נתוני מניות. אנא תקן את stock_data.csv.")
-        return # עצור אם אין נתוני מניות
+        return
 
-    ensure_ffmpeg() # וודא ש-FFmpeg זמין
+    ensure_ffmpeg()
 
-    last_processed_file = None # לשמירת שם הקובץ האחרון שעובד
+    last_processed_file = None
     
     print("🔁 התחילה לולאה שמזהה קבצים כל שנייה...")
     while True:
         try:
             filename, yemot_filename = download_yemot_file()
             
-            # אם אין קבצים חדשים או שהקובץ הוא אותו אחד שכבר עובד
             if not yemot_filename or yemot_filename == last_processed_file:
-                await asyncio.sleep(1) # המתן שניה לפני הבדיקה הבאה
+                await asyncio.sleep(1)
                 continue
 
-            last_processed_file = yemot_filename # עדכן את הקובץ האחרון שעובד
+            last_processed_file = yemot_filename
             
             # --- שלב 1: זיהוי דיבור ---
             recognized_text = transcribe_audio(TEMP_INPUT_WAV)
             
             response_text = ""
-            action_type = "play_file" # ברירת מחדל
-            action_value = "" # ברירת מחדל
+            action_type = "play_file"
+            action_value = ""
 
             if recognized_text:
                 best_match_key = get_best_match(recognized_text, stock_data)
@@ -324,13 +316,11 @@ async def main_loop():
                     stock_info = stock_data[best_match_key]
                     
                     if stock_info["has_dedicated_folder"] and stock_info["target_path"]:
-                        # אם המניה מוגדרת להפניה לשלוחה ייעודית
                         response_text = f"מפנה לשלוחת {stock_info['display_name']}."
                         action_type = "go_to_folder"
                         action_value = stock_info["target_path"]
                         print(f"💡 זוהתה הפניה לשלוחה ייעודית: {stock_info['display_name']} -> {stock_info['target_path']}")
                     else:
-                        # אם המניה מוגדרת לדיווח מחיר
                         data = get_stock_price_data(stock_info["symbol"])
                         if data:
                             direction = "עלייה" if data["day_change_percent"] > 0 else "ירידה"
@@ -343,24 +333,22 @@ async def main_loop():
                             response_text = f"מצטערים, לא הצלחנו למצוא נתונים עבור מניית {stock_info['display_name']}."
                             print(f"❌ לא נמצאו נתונים עבור מניית {stock_info['display_name']}.")
                 else:
-                    # לא זוהה נייר ערך תואם
                     response_text = "לא הצלחנו לזהות את נייר הערך שביקשת. אנא נסה שנית."
                     print(f"❌ לא זוהה נייר ערך תואם ברשימה עבור: '{recognized_text}'")
             else:
-                # לא זוהה דיבור ברור בהקלטה
                 response_text = "לא זוהה דיבור ברור בהקלטה. אנא נסה לדבר באופן ברור יותר."
                 print("❌ לא זוהה דיבור ברור בהקלטה.")
 
             # --- שלב 2: יצירת תגובה קולית והעלאה ---
             generated_audio_success = False
             uploaded_ext_ini = False
+            output_yemot_wav_name = None 
 
             if response_text and action_type == "play_file":
                 if await create_audio_file_from_text(response_text, TEMP_MP3_FILE):
-                    # יצירת שם קובץ ייחודי עבור ה-WAV שיועלה לימות המשיח
                     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                     output_yemot_wav_name = f"{OUTPUT_AUDIO_FILE_BASE}_{timestamp}.wav"
-                    action_value = output_yemot_wav_name # ה-INI יצביע על השם הייחודי
+                    action_value = output_yemot_wav_name
                     
                     if convert_mp3_to_wav(TEMP_MP3_FILE, output_yemot_wav_name):
                         if upload_file_to_yemot(output_yemot_wav_name, output_yemot_wav_name):
@@ -373,9 +361,8 @@ async def main_loop():
                 else:
                     print("❌ נכשלה יצירת קובץ אודיו מטקסט.")
             elif action_type == "go_to_folder":
-                generated_audio_success = True # נחשב הצלחה כי אין צורך בקובץ אודיו חדש
+                generated_audio_success = True 
 
-            # אם נוצרה תגובה קולית או שיש הפניה לשלוחה
             if generated_audio_success or action_type == "go_to_folder":
                 if create_ext_ini_file(action_type, action_value):
                     if upload_file_to_yemot(OUTPUT_INI_FILE_NAME, OUTPUT_INI_FILE_NAME):
@@ -389,17 +376,13 @@ async def main_loop():
                 print("⚠️ לא נוצרה תגובה קולית או הפניה לשלוחה.")
 
             # --- שלב 3: ניקוי קבצים ומחיקת קובץ המקור בימות המשיח ---
-            # נמחק את קובץ המקור מימות המשיח רק אם הועלה ext.ini בהצלחה
-            # (כלומר, הסקריפט הצליח להגיב בכל צורה שהיא)
             if uploaded_ext_ini: 
                 delete_yemot_file(yemot_filename)
             else:
                 print(f"⚠️ לא נמחק הקובץ {yemot_filename} מימות המשיח מכיוון שלא נוצרה תגובה/הפניה בהצלחה.")
 
-            # ניקוי קבצים זמניים מקומיים
             local_files_to_clean = [TEMP_INPUT_WAV, TEMP_MP3_FILE, OUTPUT_INI_FILE_NAME]
-            # הוסף את קובץ ה-WAV שנוצר רק אם הוא באמת נוצר
-            if 'output_yemot_wav_name' in locals() and os.path.exists(output_yemot_wav_name):
+            if output_yemot_wav_name and os.path.exists(output_yemot_wav_name):
                 local_files_to_clean.append(output_yemot_wav_name)
 
             for f in local_files_to_clean:
@@ -411,11 +394,9 @@ async def main_loop():
 
         except Exception as e:
             print(f"❌ שגיאה קריטית בלולאה הראשית: {e}")
-            # במקרה של שגיאה קריטית, עדיף לא למחוק את קובץ המקור
-            # כדי שניתן יהיה לבדוק אותו ידנית.
             print("⚠️ ממשיך לולאה לאחר שגיאה...")
         
-        await asyncio.sleep(1) # המתן שניה לפני הבדיקה הבאה
+        await asyncio.sleep(1)
 
 if __name__ == "__main__":
     asyncio.run(main_loop())
