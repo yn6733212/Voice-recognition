@@ -338,12 +338,12 @@ async def main_loop():
                         action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
 
                 else:
-                    response_text = "לא הצלחנו לזהות את נייר הערך שביקשת. אנא נסה שנית."
+                    response_text = "לֹא הִצְלָחְנוּ לֵזָהוֹת אֵת נִיָיר הָעֵרֵך שֵׁבִּיקָשְתָ. אָנָא נָסֵה שֵנִית."
                     print(f"❌ לא זוהה נייר ערך תואם ברשימה עבור: '{recognized_text}'")
                     # אם לא זוהה דיבור, עדיין נכין קובץ תשובה ב-000.wav
                     action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
             else:
-                response_text = "לא זוהה דיבור ברור בהקלטה. אנא נסה לדבר באופן ברור יותר."
+                response_text = "לֹא זוּהָה דִיבּוּר בָּרוּר בָּהָקְלָטָה. אָנָא נָסֵה לֵדָבֵּר בֵּאוֹפֵן בָּרוּר יוֹתֵר."
                 print("❌ לא זוהה דיבור ברור בהקלטה.")
                 # אם לא זוהה דיבור, עדיין נכין קובץ תשובה ב-000.wav
                 action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
