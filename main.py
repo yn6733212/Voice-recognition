@@ -227,6 +227,7 @@ def create_ext_ini_file(action_type, value):
                 f.write(f"type=playfile\n")
                 # **שינוי כאן: לא כותבים את שדה file_name**
                 # המערכת תניח שהקובץ הוא 000.wav אם רק type=playfile קיים
+                f.write(f"playfile_end_goto=/1/2\n") # <-- השורה שנוספה כאן
         return True
     except Exception as e:
         print(f"❌ שגיאה ביצירת קובץ INI: {e}")
@@ -335,18 +336,18 @@ async def main_loop():
                             print(f"❌ לא נמצאו נתונים עבור מניית {stock_info['display_name']}.")
                         
                         # **שינוי כאן: קובץ הפלט יהיה תמיד 000.wav**
-                        action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
+                        action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav"  
 
                 else:
-                    response_text = "לֹא הִצְלָחְנוּ לֵזָהוֹת אֵת נִיָיר הָעֵרֵך שֵׁבִּיקָשְתָ. אָנָא נָסֵה שֵנִית."
+                    response_text = "לֹא הִצְלָחְנוּ לֵזָהוֹת אֵת נִיָיר הָעֵרֵך שֵׁבִּיקָשְתָ. אָנָא נָסֵה שֵנִית."
                     print(f"❌ לא זוהה נייר ערך תואם ברשימה עבור: '{recognized_text}'")
                     # אם לא זוהה דיבור, עדיין נכין קובץ תשובה ב-000.wav
-                    action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
+                    action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav"  
             else:
-                response_text = "לֹא זוּהָה דִיבּוּר בָּרוּר בָּהָקְלָטָה. אָנָא נָסֵה לֵדָבֵּר בֵּאוֹפֵן בָּרוּר יוֹתֵר."
+                response_text = "לֹא זוּהָה דִיבּוּר בָּרוּר בָּהָקְלָטָה. אָנָא נָסֵה לֵדָבֵּר בֵּאוֹפֵן בָּרוּר יוֹתֵר."
                 print("❌ לא זוהה דיבור ברור בהקלטה.")
                 # אם לא זוהה דיבור, עדיין נכין קובץ תשובה ב-000.wav
-                action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav" 
+                action_value = f"{OUTPUT_AUDIO_FILE_BASE}.wav"  
 
 
             # --- שלב 2: יצירת תגובה קולית והעלאה ---
